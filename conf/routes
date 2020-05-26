@@ -1,0 +1,10 @@
+
+POST           /addContact           controllers.PhonebookController.addContact
+DELETE         /deleteContact        controllers.PhonebookController.deleteContact
+PUT            /changeContact        controllers.PhonebookController.changeContact
+GET            /getContacts          controllers.PhonebookController.getContacts
+GET            /findByName           controllers.PhonebookController.findByName
+GET            /findByPhone          controllers.PhonebookController.findByPhone
+OPTIONS        /                     controllers.PhonebookController.options(path="")
+OPTIONS        /*path                controllers.PhonebookController.options(path)
+
