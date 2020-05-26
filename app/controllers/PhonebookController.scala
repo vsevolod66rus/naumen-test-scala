@@ -182,4 +182,13 @@ class PhonebookController @Inject()(cc: ControllerComponents,
       )
     )
   }
+
+  def saveDbData = Action.async { implicit request: Request[AnyContent] =>
+    serv.saveDbData.flatMap {
+      case Left(e) =>
+        Future.successful(BadRequest(e.getMessage))
+      case Right(_) =>
+        Future.successful(Ok("db data was saved on disk"))
+    }
+  }
 }

@@ -10,11 +10,12 @@ import cats.syntax.applicative._
 import scala.concurrent.ExecutionContext
 import scala.io.Source
 import com.google.inject.Inject
-
 import doobie.util.fragment.Fragment
 import play.api.Configuration
-import models.Contact
+import models.{Contact, DbContactData}
 import exceptions.InvalidInputException
+import java.io.PrintWriter
+import play.api.libs.json.Json
 
 trait PhonebookRepository {
 
@@ -29,6 +30,8 @@ trait PhonebookRepository {
   def findByName(name: String): IO[List[Contact]]
 
   def findByPhone(phone: String): IO[List[Contact]]
+
+  def saveDbData: IO[Unit]
 }
 
 class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
@@ -86,6 +89,19 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
         .raiseError(InvalidInputException("No such contacts found"))
         .whenA(contacts.isEmpty)
     } yield contacts).transact(transactor)
+
+  def saveDbData: IO[Unit] =
+    for {
+      data <- sql"select * from phone_book"
+        .query[DbContactData]
+        .to[List]
+        .transact(transactor)
+      writer <- new PrintWriter("dbContactsData.json").pure[IO]
+      _ <- writer
+        .write(Json.toJson(data).toString)
+        .pure[IO]
+      _ <- writer.close.pure[IO]
+    } yield ()
 
   private def isPhoneBookEmpty: ConnectionIO[Unit] =
     for {

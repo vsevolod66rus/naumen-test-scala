@@ -19,6 +19,8 @@ trait PhonebookServise {
   def findByName(name: String): Future[Either[Throwable, List[Contact]]]
 
   def findByPhone(phone: String): Future[Either[Throwable, List[Contact]]]
+
+  def saveDbData: Future[Either[Throwable, Unit]]
 }
 
 class PhonebookServiceImpl @Inject()(repository: PhonebookRepositoryImpl)
@@ -46,6 +48,9 @@ class PhonebookServiceImpl @Inject()(repository: PhonebookRepositoryImpl)
 
   def findByPhone(phone: String): Future[Either[Throwable, List[Contact]]] =
     repository.findByPhone(filter(phone)).attempt.unsafeToFuture()
+
+  def saveDbData: Future[Either[Throwable, Unit]] =
+    repository.saveDbData.attempt.unsafeToFuture()
 
   private def filter(filter: String): String = "%" + filter + "%"
 }

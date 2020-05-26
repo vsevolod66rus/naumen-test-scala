@@ -13,3 +13,13 @@ case class UserFilter(filter: String)
 object UserFilter {
   implicit val userFilerFormat = Json.format[UserFilter]
 }
+
+case class DbContactData(id: Int,
+                         name: String,
+                         phoneNumber: String,
+                         creationDate: String,
+                         deleted: Boolean)
+
+object DbContactData {
+  implicit val dbContactDataFormat = Json.format[DbContactData]
+}

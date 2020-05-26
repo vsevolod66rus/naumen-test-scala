@@ -8,3 +8,5 @@ GET            /findByPhone          controllers.PhonebookController.findByPhone
 OPTIONS        /                     controllers.PhonebookController.options(path="")
 OPTIONS        /*path                controllers.PhonebookController.options(path)
 
+POST           /saveDbData           controllers.PhonebookController.saveDbData
+
