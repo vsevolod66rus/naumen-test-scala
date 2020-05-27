@@ -2,11 +2,18 @@ package models
 
 import exceptions.InvalidInputException
 import play.api.libs.json._
+import play.api.libs.functional.syntax._
 
 case class Contact(id: Option[Int], name: String, phoneNumber: String)
 
 object Contact {
   implicit val contactFormat = Json.format[Contact]
+
+  implicit val contactReads = (
+    (__ \ "id").readNullable[Int] and
+      (__ \ "name").read[String] and
+      (__ \ "phoneNumber").read[String]
+  )(Contact.apply _)
 
   def validateContact(contact: Contact): Either[Throwable, Contact] = {
     val contactNameFormat = "^([a-zA-Z0-9]+(_|-| )?[a-zA-Z0-9]*)*[a-zA-Z0-9]+$"
@@ -40,6 +47,14 @@ case class UserFilter(filter: String)
 
 object UserFilter {
   implicit val userFilerFormat = Json.format[UserFilter]
+
+  def validateUserFilter(
+    userFilter: UserFilter
+  ): Either[Throwable, UserFilter] = {
+    if (userFilter.filter.length < 1)
+      Left(InvalidInputException("Сannot be empty"))
+    else Right(userFilter)
+  }
 }
 
 case class DbContactData(id: Int,

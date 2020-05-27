@@ -19,9 +19,3 @@ libraryDependencies += jdbc
 libraryDependencies += filters
 
 PlayKeys.devSettings := Seq("play.server.http.port" -> "9090")
-
-// Adds additional packages into Twirl
-//TwirlKeys.templateImports += "Seva.controllers._"
-
-// Adds additional packages into conf/routes
-// play.sbt.routes.RoutesKeys.routesImport += "Seva.binders._"

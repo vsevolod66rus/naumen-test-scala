@@ -1,30 +1,32 @@
 package controllers
 
+import akka.actor.ActorSystem
 import models.{Contact, UserFilter}
 import javax.inject._
 import play.api.data.Form
 import play.api.data.Forms.mapping
 import play.api.mvc._
 import play.api.data.Forms._
-import play.api.libs.json.Json
-import exceptions.InvalidInputException
+import play.api.libs.json.{JsValue, Json}
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 import services.PhonebookServiceImpl
 
 class PhonebookController @Inject()(cc: ControllerComponents,
                                     service: PhonebookServiceImpl)
     extends AbstractController(cc) {
 
+  val system = ActorSystem("naumen-test")
+
+  implicit val ec = system.dispatcher
+
   def addContact = Action.async { implicit req =>
-    println(req.body)
     validateContactForm(peopleForm.bindFromRequest)(
       postActionWithContact(service.addContact)(_, "was added successfully")
     )
   }
 
   def changeContact = Action.async { implicit req =>
-    println(req.body)
     validateContactForm(peopleForm.bindFromRequest)(
       postActionWithContact(service.changeContactInfo)(
         _,
@@ -33,14 +35,17 @@ class PhonebookController @Inject()(cc: ControllerComponents,
     )
   }
 
-  def deleteContact = Action.async { implicit req =>
-    println(req.body)
-    validateContactForm(peopleForm.bindFromRequest)(
-      postActionWithContact(service.deleteContact)(
-        _,
-        "was deleted successfully"
-      )
-    )
+  def deleteContact(id: Int) = Action.async { implicit req =>
+    id match {
+      case 0 => Future.successful(BadRequest("Id not found"))
+      case _ =>
+        service.deleteContact(id).flatMap {
+          case Left(e) =>
+            Future.successful(BadRequest(e.getMessage))
+          case Right(_) =>
+            Future.successful(Ok("Contact was deleted successfully"))
+        }
+    }
   }
 
   def getContacts = Action.async { implicit request: Request[AnyContent] =>
@@ -48,21 +53,64 @@ class PhonebookController @Inject()(cc: ControllerComponents,
   }
 
   def findByName = Action.async { implicit req =>
-    println(req.body)
     validateUserFilterForm(userFilterForm.bindFromRequest)(
       getActionWithForm(service.findByName)(_)
     )
   }
 
-  def findByNameParam(filter: String) = Action.async {
-    Future.successful(Ok(s"aaa $filter"))
-  }
-
   def findByPhone = Action.async { implicit req =>
-    println(req.body)
     validateUserFilterForm(userFilterForm.bindFromRequest)(
       getActionWithForm(service.findByPhone)(_)
     )
+  }
+
+  def addContactJson = Action.async(parse.json) { req =>
+    validateContactJson(req.body)(
+      postActionWithContact(service.addContact)(_, "was added successfully")
+    )
+  }
+
+  def changeContactJson = Action.async(parse.json) { implicit req =>
+    validateContactJson(req.body)(
+      postActionWithContact(service.addContact)(_, "was changed successfully")
+    )
+  }
+
+  def options(path: String) = Action.async {
+    Future.successful(
+      Ok.withHeaders(
+        ACCESS_CONTROL_ALLOW_HEADERS -> Seq(
+          AUTHORIZATION,
+          CONTENT_TYPE,
+          "Target-URL"
+        ).mkString(",")
+      )
+    )
+  }
+
+  def saveDbData = Action.async { implicit request: Request[AnyContent] =>
+    service.saveDbData.flatMap {
+      case Left(e) =>
+        Future.successful(BadRequest(e.getMessage))
+      case Right(_) =>
+        Future.successful(Ok("db data was saved on disk"))
+    }
+  }
+
+  def validateContactJson(contactJs: JsValue)(fa: Contact => Future[Result]) = {
+    contactJs
+      .validate[Contact]
+      .fold(
+        _ => {
+          Future.successful(BadRequest("Invalid contact data format"))
+        },
+        Contact.validateContact(_) match {
+          case Left(err) =>
+            Future.successful(BadRequest(err.getMessage))
+          case Right(contact) =>
+            fa(contact)
+        }
+      )
   }
 
   def validateContactForm(
@@ -84,15 +132,13 @@ class PhonebookController @Inject()(cc: ControllerComponents,
   )(fa: UserFilter => Future[Result]) = {
     userFilterForm.fold(
       _ => Future.successful(BadRequest("Сannot be empty")),
-      validateUserFilter(_) match {
+      UserFilter.validateUserFilter(_) match {
         case Left(err) =>
           Future.successful(BadRequest(err.getMessage))
         case Right(filter) => fa(filter)
       }
     )
   }
-
-  implicit val cs = ExecutionContext.global
 
   def postActionWithContact[A](
     f: Contact => Future[Either[Throwable, A]]
@@ -126,14 +172,6 @@ class PhonebookController @Inject()(cc: ControllerComponents,
     }
   }
 
-  def validateUserFilter(
-    userFilter: UserFilter
-  ): Either[Throwable, UserFilter] = {
-    if (userFilter.filter.length < 1)
-      Left(InvalidInputException("Сannot be empty"))
-    else Right(userFilter)
-  }
-
   val peopleForm: Form[Contact] = Form {
     mapping(
       "id" -> optional(number),
@@ -144,26 +182,5 @@ class PhonebookController @Inject()(cc: ControllerComponents,
 
   val userFilterForm: Form[UserFilter] = Form {
     mapping("filter" -> nonEmptyText)(UserFilter.apply)(UserFilter.unapply)
-  }
-
-  def options(path: String) = Action.async {
-    Future.successful(
-      Ok.withHeaders(
-        ACCESS_CONTROL_ALLOW_HEADERS -> Seq(
-          AUTHORIZATION,
-          CONTENT_TYPE,
-          "Target-URL"
-        ).mkString(",")
-      )
-    )
-  }
-
-  def saveDbData = Action.async { implicit request: Request[AnyContent] =>
-    service.saveDbData.flatMap {
-      case Left(e) =>
-        Future.successful(BadRequest(e.getMessage))
-      case Right(_) =>
-        Future.successful(Ok("db data was saved on disk"))
-    }
   }
 }

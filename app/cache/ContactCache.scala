@@ -29,33 +29,19 @@ class ContactCache {
     logger.info(
       s"cache updated: added a contact ${contact.name} ${contact.phoneNumber}"
     )
-    println(contactsCache)
     id.pure[IO]
   }
 
   def updateContact(id: Int, contact: Contact): IO[Int] = {
-    contactsCache
-      .get(id)
-      .foreach { record =>
-        contactsCache.put(
-          id,
-          record.copy(
-            id = contact.id,
-            name = contact.name,
-            phoneNumber = contact.phoneNumber
-          )
-        )
-      }
+    contactsCache.update(id, contact)
     logger.info(
       s"cache updated: changed a contact ${contact.name} ${contact.phoneNumber}"
     )
-    println(contactsCache)
     id.pure[IO]
   }
 
   def removeContact(id: Int): IO[Int] = {
     contactsCache.remove(id)
-    println(contactsCache)
     logger.info(s"cache updated: removed a contact with id $id")
     id.pure[IO]
   }

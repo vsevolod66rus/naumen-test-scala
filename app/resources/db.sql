@@ -4,8 +4,7 @@ create table if not exists phone_book
     name varchar(25) not null,
     phone varchar(15) not null,
     date date default now(),
-    deleted boolean default false,
-    primary key (name, phone, deleted)
+    deleted boolean default false
 );
 
 

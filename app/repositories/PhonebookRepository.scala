@@ -8,7 +8,6 @@ import cats.effect.{ContextShift, IO}
 import cats.syntax.applicative._
 import cats.syntax.flatMap._
 
-import scala.concurrent.ExecutionContext
 import scala.io.Source
 import com.google.inject.Inject
 import doobie.util.fragment.Fragment
@@ -18,6 +17,7 @@ import models.{Contact, DbContactData}
 import exceptions.InvalidInputException
 import java.io.PrintWriter
 
+import akka.actor.ActorSystem
 import cache.ContactCache
 
 trait PhonebookRepository {
@@ -28,7 +28,7 @@ trait PhonebookRepository {
 
   def changeContactInfo(id: Int, contact: Contact): IO[Int]
 
-  def deleteContact(id: Int, contact: Contact): IO[Int]
+  def deleteContact(id: Int): IO[Int]
 
   def findByName(name: String): IO[List[Contact]]
 
@@ -81,7 +81,7 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
 
   def changeContactInfo(id: Int, contact: Contact): IO[Int] =
     (for {
-      _ <- deleted(id, contact.name)
+      _ <- deleted(id)
       _ <- isNameAlreadyExist(Option(id), contact.name)
       _ <- isPhoneAlreadyExist(Option(id), contact.phoneNumber)
       _ <- noChanges(id, contact)
@@ -90,10 +90,10 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
       .transact(transactor)
       .flatMap(_ => contactCache.updateContact(id, contact))
 
-  def deleteContact(id: Int, contact: Contact): IO[Int] =
+  def deleteContact(id: Int): IO[Int] =
     (for {
-      _ <- deleted(id, contact.name)
-      id <- sql"update phone_book set deleted = true where id = ${contact.id}".update.run
+      _ <- deleted(id)
+      id <- sql"update phone_book set deleted = true where id = $id".update.run
     } yield
       id).transact(transactor).flatMap(_ => contactCache.removeContact(id))
 
@@ -106,11 +106,11 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
           res <- sql"select id, name, phone from phone_book where lower(name) like $name and not deleted"
             .query[Contact]
             .to[List]
-          _ <- connection
-            .raiseError(InvalidInputException("No such contacts found"))
-            .whenA(res.isEmpty)
         } yield res).transact(transactor)
       )
+      _ <- IO
+        .raiseError(InvalidInputException("No such contacts found"))
+        .whenA(contacts.isEmpty)
     } yield contacts
 
   def findByPhone(phone: String): IO[List[Contact]] =
@@ -122,11 +122,11 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
           res <- sql"select id, name, phone from phone_book where lower(phone) like $phone and not deleted"
             .query[Contact]
             .to[List]
-          _ <- connection
-            .raiseError(InvalidInputException("No such contacts found"))
-            .whenA(res.isEmpty)
         } yield res).transact(transactor)
       )
+      _ <- IO
+        .raiseError(InvalidInputException("No such contacts found"))
+        .whenA(contacts.isEmpty)
     } yield contacts
 
   def saveDbData: IO[Unit] =
@@ -214,13 +214,13 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
         } yield ()
     }
 
-  private def deleted(id: Int, name: String): ConnectionIO[Unit] =
+  private def deleted(id: Int): ConnectionIO[Unit] =
     for {
       deleted <- sql"select deleted from phone_book where id = $id"
         .query[Boolean]
         .unique
       _ <- connection
-        .raiseError(InvalidInputException(s"$name was already deleted."))
+        .raiseError(InvalidInputException(s"Contact was deleted earlier."))
         .whenA(deleted)
     } yield ()
 
@@ -241,7 +241,9 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
       .transact(transactor)
       .flatMap(count => (count == contactCache.contactCacheSize).pure[IO])
 
-  private val dbExecutionContext = ExecutionContext.global
+  val system = ActorSystem("naumen-test")
+
+  private val dbExecutionContext = system.dispatcher
 
   implicit val contextShift: ContextShift[IO] =
     IO.contextShift(dbExecutionContext)

@@ -14,7 +14,7 @@ trait PhonebookServise {
 
   def changeContactInfo(contact: Contact): Future[Either[Throwable, Int]]
 
-  def deleteContact(contact: Contact): Future[Either[Throwable, Int]]
+  def deleteContact(id: Int): Future[Either[Throwable, Int]]
 
   def findByName(name: String): Future[Either[Throwable, List[Contact]]]
 
@@ -37,11 +37,8 @@ class PhonebookServiceImpl @Inject()(repository: PhonebookRepositoryImpl)
       case Some(id) => repository.changeContactInfo(id, contact)
     }).attempt.unsafeToFuture()
 
-  def deleteContact(contact: Contact): Future[Either[Throwable, Int]] =
-    (contact.id match {
-      case None     => IO.raiseError(InvalidInputException("Id not found"))
-      case Some(id) => repository.deleteContact(id, contact)
-    }).attempt.unsafeToFuture()
+  def deleteContact(id: Int): Future[Either[Throwable, Int]] =
+    repository.deleteContact(id).attempt.unsafeToFuture()
 
   def findByName(name: String): Future[Either[Throwable, List[Contact]]] =
     repository.findByName(filter(name)).attempt.unsafeToFuture()
