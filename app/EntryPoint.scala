@@ -1,4 +1,5 @@
-import filters.{LoggingFilter, CorsFilter}
+import cache.ContactCache
+import filters.{CorsFilter, LoggingFilter}
 import play.api._
 import play.api.mvc._
 import play.filters.gzip._
@@ -40,7 +41,10 @@ class MyComponents(context: ApplicationLoader.Context)
 
   lazy val defaultParser = new BodyParsers.Default(parse)
 
-  lazy val repositoryImpl = new PhonebookRepositoryImpl(configuration)
+  lazy val contactCacheImpl = new ContactCache
+
+  lazy val repositoryImpl =
+    new PhonebookRepositoryImpl(configuration, contactCacheImpl)
 
   lazy val phonebookController = new _root_.controllers.PhonebookController(
     controllerComponents,

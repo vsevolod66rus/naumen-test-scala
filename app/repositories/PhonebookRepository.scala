@@ -6,6 +6,8 @@ import doobie.util.transactor.Transactor
 import doobie.free.connection
 import cats.effect.{ContextShift, IO}
 import cats.syntax.applicative._
+import cats.syntax.flatMap._
+
 import scala.concurrent.ExecutionContext
 import scala.io.Source
 import com.google.inject.Inject
@@ -15,6 +17,8 @@ import play.api.libs.json.Json
 import models.{Contact, DbContactData}
 import exceptions.InvalidInputException
 import java.io.PrintWriter
+
+import cache.ContactCache
 
 trait PhonebookRepository {
 
@@ -35,7 +39,8 @@ trait PhonebookRepository {
   def deleteOldData: IO[Int]
 }
 
-class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
+class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
+                                        contactCache: ContactCache)
     extends PhonebookRepository {
 
   def addContact(contact: Contact): IO[Int] =
@@ -45,14 +50,34 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
       id <- sql"insert into phone_book (name, phone) values (${contact.name}, ${contact.phoneNumber}) returning id"
         .query[Int]
         .unique
-    } yield id).transact(transactor)
+    } yield id)
+      .transact(transactor)
+      .flatMap(
+        id =>
+          contactCache
+            .addContact(
+              id,
+              Contact(Option(id), contact.name, contact.phoneNumber)
+          )
+      )
 
   def getContacts: IO[List[Contact]] =
-    (for {
-      contacts <- sql"select id, name, phone from phone_book where not deleted order by id"
-        .query[Contact]
-        .to[List]
-    } yield contacts).transact(transactor)
+    for {
+      contacts <- isCacheValid.ifM(
+        contactCache.getAllContacts,
+        for {
+          res <- sql"select id, name, phone from phone_book where not deleted order by id"
+            .query[Contact]
+            .to[List]
+            .transact(transactor)
+          _ <- res
+            .foreach(
+              contact => contactCache.addContact(contact.id.get, contact)
+            )
+            .pure[IO]
+        } yield res
+      )
+    } yield contacts
 
   def changeContactInfo(id: Int, contact: Contact): IO[Int] =
     (for {
@@ -61,35 +86,48 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
       _ <- isPhoneAlreadyExist(Option(id), contact.phoneNumber)
       _ <- noChanges(id, contact)
       id <- sql"update phone_book set name = ${contact.name}, phone = ${contact.phoneNumber} where id = $id".update.run
-    } yield id).transact(transactor)
+    } yield id)
+      .transact(transactor)
+      .flatMap(_ => contactCache.updateContact(id, contact))
 
   def deleteContact(id: Int, contact: Contact): IO[Int] =
     (for {
       _ <- deleted(id, contact.name)
       id <- sql"update phone_book set deleted = true where id = ${contact.id}".update.run
-    } yield id).transact(transactor)
+    } yield
+      id).transact(transactor).flatMap(_ => contactCache.removeContact(id))
 
   def findByName(name: String): IO[List[Contact]] =
-    (for {
-      _ <- isPhoneBookEmpty
-      contacts <- sql"select id, name, phone from phone_book where lower(name) like $name and not deleted"
-        .query[Contact]
-        .to[List]
-      _ <- connection
-        .raiseError(InvalidInputException("No such contacts found"))
-        .whenA(contacts.isEmpty)
-    } yield contacts).transact(transactor)
+    for {
+      contacts <- isCacheValid.ifM(
+        contactCache.findByName(name.dropRight(1).drop(1)),
+        (for {
+          _ <- isPhoneBookEmpty
+          res <- sql"select id, name, phone from phone_book where lower(name) like $name and not deleted"
+            .query[Contact]
+            .to[List]
+          _ <- connection
+            .raiseError(InvalidInputException("No such contacts found"))
+            .whenA(res.isEmpty)
+        } yield res).transact(transactor)
+      )
+    } yield contacts
 
   def findByPhone(phone: String): IO[List[Contact]] =
-    (for {
-      _ <- isPhoneBookEmpty
-      contacts <- sql"select id, name, phone from phone_book where lower(phone) like $phone and not deleted"
-        .query[Contact]
-        .to[List]
-      _ <- connection
-        .raiseError(InvalidInputException("No such contacts found"))
-        .whenA(contacts.isEmpty)
-    } yield contacts).transact(transactor)
+    for {
+      contacts <- isCacheValid.ifM(
+        contactCache.findByPhone(phone.dropRight(1).drop(1)),
+        (for {
+          _ <- isPhoneBookEmpty
+          res <- sql"select id, name, phone from phone_book where lower(phone) like $phone and not deleted"
+            .query[Contact]
+            .to[List]
+          _ <- connection
+            .raiseError(InvalidInputException("No such contacts found"))
+            .whenA(res.isEmpty)
+        } yield res).transact(transactor)
+      )
+    } yield contacts
 
   def saveDbData: IO[Unit] =
     for {
@@ -188,13 +226,20 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
 
   private def noChanges(id: Int, contact: Contact): ConnectionIO[Unit] =
     for {
-      noChanges <- sql"select name = ${contact.name} and phone = ${contact.phoneNumber} from phone_book where id = $id"
+      noChanges <- sql"select name = ${contact.name} and phone = ${contact.phoneNumber} from phone_book where id = $id and not deleted"
         .query[Boolean]
         .unique
       _ <- connection
         .raiseError(InvalidInputException(s"No changes for ${contact.name}."))
         .whenA(noChanges)
     } yield ()
+
+  private def isCacheValid: IO[Boolean] =
+    sql"select count (*) from phone_book where not deleted"
+      .query[Int]
+      .unique
+      .transact(transactor)
+      .flatMap(count => (count == contactCache.contactCacheSize).pure[IO])
 
   private val dbExecutionContext = ExecutionContext.global
 
