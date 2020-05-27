@@ -6,16 +6,15 @@ import doobie.util.transactor.Transactor
 import doobie.free.connection
 import cats.effect.{ContextShift, IO}
 import cats.syntax.applicative._
-
 import scala.concurrent.ExecutionContext
 import scala.io.Source
 import com.google.inject.Inject
 import doobie.util.fragment.Fragment
 import play.api.Configuration
+import play.api.libs.json.Json
 import models.{Contact, DbContactData}
 import exceptions.InvalidInputException
 import java.io.PrintWriter
-import play.api.libs.json.Json
 
 trait PhonebookRepository {
 
@@ -32,6 +31,8 @@ trait PhonebookRepository {
   def findByPhone(phone: String): IO[List[Contact]]
 
   def saveDbData: IO[Unit]
+
+  def deleteOldData: IO[Int]
 }
 
 class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
@@ -102,6 +103,10 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
         .pure[IO]
       _ <- writer.close.pure[IO]
     } yield ()
+
+  def deleteOldData: IO[Int] =
+    sql"update phone_book set deleted = true where date < (now() - interval '365 days');".update.run
+      .transact(transactor)
 
   private def isPhoneBookEmpty: ConnectionIO[Unit] =
     for {
@@ -209,7 +214,7 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration)
 
   private val createTable: Unit =
     Source
-      .fromFile("app/resouses/db.sql")
+      .fromFile("app/resources/db.sql")
       .mkString
       .pure[IO]
       .flatMap(

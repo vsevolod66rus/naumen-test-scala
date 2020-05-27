@@ -8,7 +8,6 @@ import play.api.mvc._
 import play.api.data.Forms._
 import play.api.libs.json.Json
 import exceptions.InvalidInputException
-import play.api.http.HeaderNames
 
 import scala.concurrent.{ExecutionContext, Future}
 import services.PhonebookServiceImpl

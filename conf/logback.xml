@@ -33,6 +33,7 @@
   </appender>
 
   <logger name="play" level="INFO" />
+  <logger name="Scheduler logger" level="INFO" />
   <logger name="application" level="DEBUG" />
 
   <root level="WARN">

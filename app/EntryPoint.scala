@@ -5,6 +5,7 @@ import play.filters.gzip._
 import play.api.routing.Router
 import repositories.PhonebookRepositoryImpl
 import services.PhonebookServiceImpl
+import scheduler.DeleteOldDataScheduler
 
 class EntryPoint extends ApplicationLoader {
 
@@ -15,6 +16,10 @@ class EntryPoint extends ApplicationLoader {
       _.configure(context.environment, context.initialConfiguration, Map.empty)
     }
     components = new MyComponents(context)
+
+    val scheduler =
+      new DeleteOldDataScheduler(components.repositoryImpl).start()
+
     components.application
   }
 }
@@ -35,9 +40,11 @@ class MyComponents(context: ApplicationLoader.Context)
 
   lazy val defaultParser = new BodyParsers.Default(parse)
 
+  lazy val repositoryImpl = new PhonebookRepositoryImpl(configuration)
+
   lazy val phonebookController = new _root_.controllers.PhonebookController(
     controllerComponents,
-    new PhonebookServiceImpl(new PhonebookRepositoryImpl(configuration))
+    new PhonebookServiceImpl(repositoryImpl)
   )
 
   lazy val router: Router =
