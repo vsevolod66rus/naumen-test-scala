@@ -1,0 +1,1 @@
+# naumen-test-scala
