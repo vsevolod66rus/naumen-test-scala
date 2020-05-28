@@ -66,7 +66,7 @@ class PhonebookRepositoryImpl @Inject()(configuration: Configuration,
       contacts <- isCacheValid.ifM(
         contactCache.getAllContacts,
         for {
-          res <- sql"select id, name, phone from phone_book where not deleted order by id"
+          res <- sql"select id, name, phone from phone_book where not deleted order by name"
             .query[Contact]
             .to[List]
             .transact(transactor)

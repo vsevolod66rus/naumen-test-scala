@@ -72,7 +72,10 @@ class PhonebookController @Inject()(cc: ControllerComponents,
 
   def changeContactJson = Action.async(parse.json) { implicit req =>
     validateContactJson(req.body)(
-      postActionWithContact(service.addContact)(_, "was changed successfully")
+      postActionWithContact(service.changeContactInfo)(
+        _,
+        "was changed successfully"
+      )
     )
   }
 
